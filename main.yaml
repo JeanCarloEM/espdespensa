@@ -44,43 +44,46 @@ time:
       - seconds: "*"
         then:
           lambda: |-
-            /* se abriu, liga */
-            if (id(my__opened_lapse) == 0){
-              id(rele).turn_on();
-            }
+            int tt = -1;
 
-            /* incrementa, se ativado */
+            /* incrementa, se ativado 'opened' */
             if (id(my__opened_lapse) >= 0){
               id(my__opened_lapse) += 1;
+              tt = id(maxseconds).state - id(my__closed_lapse);
             }
 
-            /* incrementa, se ativado */
+            /* incrementa, se ativado 'closed' */
             if (id(my__closed_lapse) >= 0){
               id(my__closed_lapse) += 1;
+              tt = id(minseconds).state - id(my__closed_lapse);
             }
 
-            /* se esta fechado pelo tempo, desliga */
-            if (id(my__closed_lapse) >= id(minseconds).state ){
-              id(my__closed_lapse) = -10;
+            if (tt < 0){
               id(rele).turn_off();
+              tt = 0;
             }
 
-            /* se ficou muito tempo ligada, desliga */
-            if (id(my__opened_lapse) >= id(maxseconds).state ){
-              id(my__opened_lapse) = -10;
-              id(rele).turn_off();
-            }
+            unsigned short h, m, s; // Declare variables for seconds, hours, minutes, and seconds
+
+            // Calculate hours, minutes, and remaining seconds
+            h = (tt/3600);
+            m = (tt -(3600*h))/60;
+            s = (tt -(3600*h)-(m*60));
+
+            char buf[19];// esperado 9 posições, mas colocado19 para evitar WARNs
+            sprintf(buf, "%02d:%02d:%02d\n",h,m,s);
+            id(remainingtime).state = buf;
 
 globals:
   - id: my__opened_lapse
     type: int
     restore_value: no
-    initial_value: '-10'
+    initial_value: "-10"
 
   - id: my__closed_lapse
     type: int
     restore_value: no
-    initial_value: '-10'
+    initial_value: "-10"
 
 number:
   - platform: template
@@ -118,6 +121,21 @@ switch:
     disabled_by_default: true
     restore_mode: RESTORE_DEFAULT_OFF
 
+    on_turn_on:
+      lambda: |-
+        id(my__opened_lapse) = 0;
+        id(my__closed_lapse) = -10;
+
+    on_turn_off:
+      lambda: |-
+        id(my__opened_lapse) = -10;
+        id(my__closed_lapse) = -10;
+
+text_sensor:
+  - platform: version
+    id: remainingtime
+    name: "Tempo para desligar"
+
 binary_sensor:
   - platform: gpio
     internal: true
@@ -132,8 +150,7 @@ binary_sensor:
     on_state:
       lambda: |-
         if (x){
-          id(my__opened_lapse) = 0;
-          id(my__closed_lapse) = -10;
+          id(rele).turn_on();
         }else{
           id(my__opened_lapse) = -10;
           id(my__closed_lapse) = 0;
