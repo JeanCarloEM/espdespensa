@@ -1,0 +1,1 @@
+esphome run main.yaml --device %1

@@ -1,0 +1,140 @@
+esphome:
+  name: despensaautolight
+  comment: Despensa - Luz Automática
+
+esp8266:
+  board: d1_mini
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  port: 6053
+  encryption:
+    key: !secret despensaautolight_apikey
+  reboot_timeout: 0s
+
+ota:
+  safe_mode: true
+  password: !secret despensaautolight_otakey
+  reboot_timeout: 0s
+  id: my_ota
+
+web_server:
+  port: 80
+
+wifi:
+  ssid: !secret despensaautolight_wifiname
+  password: !secret despensaautolight_wifipass
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Despensa Fallback Hotspot"
+    password: "12345678"
+
+captive_portal:
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "America/Sao_Paulo"
+    servers: ["a.st1.ntp.br", "b.st1.ntp.br", "c.st1.ntp.br"]
+    on_time:
+      - seconds: "*"
+        then:
+          lambda: |-
+            /* se abriu, liga */
+            if (id(my__opened_lapse) == 0){
+              id(rele).turn_on();
+            }
+
+            /* incrementa, se ativado */
+            if (id(my__opened_lapse) >= 0){
+              id(my__opened_lapse) += 1;
+            }
+
+            /* incrementa, se ativado */
+            if (id(my__closed_lapse) >= 0){
+              id(my__closed_lapse) += 1;
+            }
+
+            /* se esta fechado pelo tempo, desliga */
+            if (id(my__closed_lapse) >= id(minseconds).state ){
+              id(my__closed_lapse) = -10;
+              id(rele).turn_off();
+            }
+
+            /* se ficou muito tempo ligada, desliga */
+            if (id(my__opened_lapse) >= id(maxseconds).state ){
+              id(my__opened_lapse) = -10;
+              id(rele).turn_off();
+            }
+
+globals:
+  - id: my__opened_lapse
+    type: int
+    restore_value: no
+    initial_value: '-10'
+
+  - id: my__closed_lapse
+    type: int
+    restore_value: no
+    initial_value: '-10'
+
+number:
+  - platform: template
+    id: minseconds
+    name: "Manter ligado por no mínimo (s)"
+    min_value: 10
+    max_value: 600
+    step: 1
+    initial_value: 30
+    optimistic: true
+    restore_value: true
+
+  - platform: template
+    id: maxseconds
+    name: "Manter ligado por no mánimo (s)"
+    min_value: 30
+    max_value: 1800
+    step: 1
+    initial_value: 600
+    optimistic: true
+    restore_value: true
+
+button:
+  - platform: restart
+    name: "Restart"
+
+switch:
+  - platform: gpio
+    name: "Iluminação (0)"
+    id: rele
+    pin:
+      number: 0
+      inverted: true
+
+    disabled_by_default: true
+    restore_mode: RESTORE_DEFAULT_OFF
+
+binary_sensor:
+  - platform: gpio
+    internal: true
+    pin:
+      number: 13
+      mode:
+        input: true
+        pullup: true
+    name: "Porta Aberta (13) (gnd)"
+    filters:
+      - delayed_on_off: 400ms
+    on_state:
+      lambda: |-
+        if (x){
+          id(my__opened_lapse) = 0;
+          id(my__closed_lapse) = -10;
+        }else{
+          id(my__opened_lapse) = -10;
+          id(my__closed_lapse) = 0;
+        }
