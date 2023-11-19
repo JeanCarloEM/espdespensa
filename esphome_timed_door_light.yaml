@@ -1,0 +1,179 @@
+esphome:
+  name: ${devicename}
+  comment: ${devicecomment}
+  on_boot:
+    priority: 250.0
+    then:
+      lambda: |-
+        id(github).publish_state("");
+
+        if (id(door).state) {
+          id(relay).turn_on();
+        }else{
+          id(my__counter) = 0;
+        }
+
+esp8266:
+  board: ${board}
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  port: 6053
+  encryption:
+    key: ${apikey}
+  reboot_timeout: 0s
+
+ota:
+  safe_mode: true
+  password: ${otakey}
+  reboot_timeout: 0s
+
+web_server:
+  port: 80
+
+wifi:
+  ssid: ${wifi}
+  password: ${wifipass}
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "${capitalized_name} ${title_ap_ssid}"
+    password: "12345678"
+
+#captive_portal:
+
+interval:
+  - interval: 1000ms
+    then:
+      lambda: |-
+        if (id(my__counter) <= 0){
+          return;
+        }
+
+        /* decreases */
+        id(my__counter) -= 1;
+
+        /* IT ENDED? */
+        if (id(my__counter) == 0){
+          id(relay).turn_off();
+          return;
+        }
+
+        /* STILL COUNTING? SHOW THE LACK OF TIME */
+        // Declare variables for seconds, hours, minutes, and seconds
+        unsigned short h, m, s;
+
+        // Calculate hours, minutes, and remaining seconds
+        h = (id(my__counter)/3600);
+        m = (id(my__counter) -(3600*h))/60;
+        s = (id(my__counter) -(3600*h)-(m*60));
+
+        // expected 9 positions, but placed 19 to
+        // avoid WARNs in compilation
+        char buf[19];
+        sprintf(buf, "%02d:%02d:%02d\n",h,m,s);
+        id(remainingtime).state = buf;
+
+globals:
+  - id: my__counter
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+button:
+  - platform: restart
+    name: ${title_restart}
+
+number:
+  - platform: template
+    id: minseconds
+    name: ${title_turn_off_closed}
+    min_value: 10
+    max_value: 1800
+    step: 1
+    initial_value: 60
+    optimistic: true
+    restore_value: true
+
+  - platform: template
+    id: maxseconds
+    name: ${title_turn_off_opened}
+    min_value: 30
+    max_value: 3600
+    step: 1
+    initial_value: 1800
+    optimistic: true
+    restore_value: true
+
+switch:
+  - platform: gpio
+    name: "${title_light}"
+    id: relay
+    pin:
+      number: ${pin_rele}
+      inverted: false
+
+    disabled_by_default: false
+    restore_mode: RESTORE_DEFAULT_OFF
+
+    on_turn_on:
+      lambda: |-
+        id(my__counter) = id(maxseconds).state;
+
+    on_turn_off:
+      lambda: |-
+        id(my__counter) = 0;
+        id(remainingtime).publish_state("OFF");
+
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: ${pin_sensor}
+      mode:
+        input: true
+        pulldown: true
+    name: ${title_dooropened}
+    id: door
+    filters:
+      - delayed_on_off: 200ms
+    on_state:
+      lambda: |-
+        if (x){
+          id(my__counter) = id(maxseconds).state;
+          id(relay).turn_on();
+        }else{
+          id(my__counter) = id(minseconds).state;
+        }
+
+  - platform: gpio
+    pin:
+      number: ${pin_button}
+      mode:
+        input: true
+        pullup: true
+    name: "Push Buttom"
+    filters:
+      - delayed_on_off: 200ms
+    on_state:
+      lambda: |-
+        if (!x){
+          id(relay).toggle();
+        }
+
+text_sensor:
+  - platform: template
+    id: remainingtime
+    name: ${title_off_in}
+    update_interval: 1s
+
+  - platform: template
+    name: "Github"
+    id: github
+    filters:
+      lambda: return {"JeanCarloEM/esphome_timed_door_light"};
+
+  - platform: version
+    name: "ESPHome Version"

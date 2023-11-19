@@ -1,0 +1,15 @@
+substitutions:
+  <<: !include i18n.yaml
+  devicename: "despensa"
+  capitalized_name: "Despensa"
+  devicecomment: "Luz automática da Despensa"
+  board: d1_mini
+  pin_rele: "GPIO5"
+  pin_button: "GPIO4"
+  pin_sensor: "GPIO16"
+  apikey: !secret timed_door_light__apikey
+  otakey: !secret timed_door_light__otakey
+  wifi: "gz"
+  wifipass: !secret timed_door_light__wifipass
+
+<<: !include esphome_timed_door_light.yaml

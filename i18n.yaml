@@ -1,0 +1,7 @@
+title_dooropened: "Sensor de porta Aberta"
+title_ap_ssid: "Config Wifi"
+title_light: "Luz"
+title_restart: "Reiniciar"
+title_off_in: "Desligar em"
+title_turn_off_opened: "Desligar ao abrir, após (segundos)"
+title_turn_off_closed: "Desligar ao fechar, após (segundos)"
