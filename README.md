@@ -2,11 +2,11 @@
 
 ## Etapas
 
-![alt text](https://github.com/JeanCarloEM/esphome_timed_door_light/blob/master/doc/illustration.svg?raw=true)
+![alt text](https://raw.githubusercontent.com/JeanCarloEM/esphome_timed_door_light/master/doc/illustration.svg)
 
 ### Passo 1
 
-Ao ser aberta a porta, a luz acende, porém, a luz permanece aberta por um período máximo `maxseconds` segundos;
+Ao ser aberta a porta, a luz acende, porém, a luz permanece aberta por um período máximo `maxseconds` de segundos;
 
 ### Passo 2
 
@@ -14,14 +14,18 @@ Se a porta permaneceu aberta por mais segundos que `maxseconds` então a luz é 
 
 ### Passo 3
 
-Ao ser fechada a porta, E se a luz ainda estiver acesa, a mesma é mantida acesa um tempo obtido atravéz da fórmula:
-```math
-\begin{matrix} r = minseconds + (add\cdot (counter - 1)) \end{matrix}\ |\ \begin{Bmatrix} minseconds \ \epsilon\ \mathbb{N}, 10 \leqslant minseconds \leqslant 1800\\ add\ \epsilon\ \mathbb{N}, 10 \leqslant add \leqslant 60  \\ counter\ \epsilon\ \mathbb{N},\ counter >  0\\ r\ \epsilon\ \mathbb{N}, r < minseconds \cdot (maxadd+1), r < maxseconds\\ maxadd\ \epsilon\ \mathbb{R}, 0.1\leqslant minseconds \leqslant 7 \end{Bmatrix}
-```
+Ao ser fechada a porta se a luz já estiver apagada não faça nada, porém se a luz ainda estiver acesa, a mesma é mantida acesa um tempo obtido atravéz da fórmula: $$r = minseconds + (add\cdot (counter - 1))$$, onde:
+
+* $$minseconds \ \epsilon\ \mathbb{N}, 10 \leqslant minseconds \leqslant 1800$$
+* $$add\ \epsilon\ \mathbb{N}, 10 \leqslant add \leqslant 60$$
+* $$counter\ \epsilon\ \mathbb{N},\ counter >  0$$
+* $$r\ \epsilon\ \mathbb{N}, r < minseconds \cdot (maxadd+1), r < maxseconds$$
+* $$maxadd\ \epsilon\ \mathbb{R}, 0.1\leqslant minseconds \leqslant 7$$
+
 
 ### Passo 4
 
-No passo 4 verifica-se por `between_onoff_check` segundos se a porta voltou a ser aberta, para que a partir disso, ajustar `my__increase_off_counter` a fim de evitar novo acendimento, conforme [anchor](#prevenir-recorrencia). Note que `between_onoff_check` é contado a partir do desligamento da luz, e NÃO a partir do fechamento da porta, pois o objetivo é verifica a reincidência de regligação da luz.
+No passo 4 verifica-se por `between_onoff_check` segundos se a porta voltou a ser aberta, para que a partir disso, ajustar `my__increase_off_counter` a fim de evitar novo acendimento, conforme subtítulo [Prevenir Recorrência](#prevenir-recorrência). Note que `between_onoff_check` é contado a partir do desligamento da luz, e NÃO a partir do fechamento da porta, pois o objetivo é verifica a reincidência de regligação da luz.
 
 ### Prevenir Recorrência
 
