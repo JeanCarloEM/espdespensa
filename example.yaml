@@ -11,5 +11,8 @@ substitutions:
   otakey: !secret timed_door_light__otakey
   wifi: "gz"
   wifipass: !secret timed_door_light__wifipass
+  default_latitude: 21.5946°
+  default_longitude: 47.2533°
+  default_timezone: "America/Sao_Paulo"
 
 <<: !include esphome_timed_door_light.yaml

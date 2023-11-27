@@ -14,14 +14,15 @@ Se a porta permaneceu aberta por mais segundos que `maxseconds` então a luz é 
 
 ### Passo 3
 
-Ao ser fechada a porta se a luz já estiver apagada não faça nada, porém se a luz ainda estiver acesa, a mesma é mantida acesa um tempo obtido atravéz da fórmula: $$r = minseconds + (add\cdot (counter - 1))$$, onde:
+Ao ser fechada a porta se a luz já estiver apagada não faça nada, porém se a luz ainda estiver acesa, a mesma é mantida acesa um tempo obtido atravéz da fórmula: $$T = minseconds + (add\cdot (counter - 1))$$,
 
-* $$minseconds \ \epsilon\ \mathbb{N}, 10 \leqslant minseconds \leqslant 1800$$
-* $$add\ \epsilon\ \mathbb{N}, 10 \leqslant add \leqslant 60$$
-* $$counter\ \epsilon\ \mathbb{N},\ counter >  0$$
-* $$r\ \epsilon\ \mathbb{N}, r < minseconds \cdot (maxadd+1), r < maxseconds$$
-* $$maxadd\ \epsilon\ \mathbb{R}, 0.1\leqslant minseconds \leqslant 7$$
+Onde:
 
+- $$minseconds \ \epsilon\ \mathbb{N}, 10 \leqslant minseconds \leqslant 1800$$
+- $$add\ \epsilon\ \mathbb{N}, 10 \leqslant add \leqslant 60$$
+- $$counter\ \epsilon\ \mathbb{N},\ counter >  0$$
+- $$T\ \epsilon\ \mathbb{N}, T < minseconds \cdot (maxadd+1), T < maxseconds$$
+- $$maxadd\ \epsilon\ \mathbb{R}, 0.1\leqslant minseconds \leqslant 7$$
 
 ### Passo 4
 
