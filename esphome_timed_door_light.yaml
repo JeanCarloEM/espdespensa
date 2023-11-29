@@ -4,17 +4,25 @@ esphome:
   on_boot:
     priority: 250.0
     then:
-      lambda: |-
-        id(again_on_counter).publish_state( std::to_string(id(my__increase_off_counter)).c_str());
+      - ds1307.read_time:
+      - script.execute: get_timezone
+      - lambda: |-
+          id(again_on_counter).publish_state( std::to_string(id(my__increase_off_rounds)).c_str());
 
-        if (id(door).state) {
-          id(status_change)->execute(1);
-        }else{
-          id(my__counter) = 0;
-        }
+          if (id(door).state) {
+            id(door_status_change)->execute(1);
+          }else{
+            id(my__counter) = 0;
+          }
 
 esp8266:
   board: ${board}
+
+i2c:
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  scan: true
+  id: bus_a
 
 # Enable logging
 logger:
@@ -50,35 +58,53 @@ sun:
   id: sun_sun
 
 time:
+  - platform: ds1307
+    id: ds1307_time
+    update_interval: never
+
   - platform: homeassistant
     id: ha_time
+    on_time_sync:
+      then:
+        - ds1307.write_time:
+        - logger.log: "Time synchronized from home assistant clock"
 
   - platform: sntp
     id: sntp_time
     timezone: ${default_timezone}
     servers: ["time.cloudflare.com", "time.google.com", "0.pool.ntp.org"]
-
+    on_time_sync:
+      then:
+        - ds1307.write_time:
+        - logger.log: "Time synchronized from NTP server"
     on_time:
       - seconds: 0
         minutes: 0
         hours: 17
         then:
-          lambda: |-
-            id(my__increase_off_counter) = 0;
-            id(again_on_counter).publish_state("0");
+          script.execute: reset_rounds
 
       - seconds: 0
         minutes: 0
         hours: 6
         then:
-          lambda: |-
-            id(my__increase_off_counter) = 0;
-            id(again_on_counter).publish_state("0");
+          script.execute: reset_rounds
 
 interval:
-  - interval: 1000ms
+  - interval: 60s
+    then:
+      script.execute: get_timezone
+
+  - interval: 1s
     then:
       lambda: |-
+        // forces a reboot counter in a maximum of 12 hours.
+        id(my_between_maxreset_counter) -= 1;
+
+        if (id(my_between_maxreset_counter) <= 0){
+          id(reset_rounds)->execute();
+        }
+
         /*
          * counter of timer between off and on
          */
@@ -125,7 +151,22 @@ interval:
         id(remainingtime).publish_state(buf);
 
 globals:
+  - id: my_between_maxreset_counter
+    type: int
+    restore_value: no
+    initial_value: "43200"
+
   - id: my__counter
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  - id: check_brightness_response
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+  - id: check_isnight_response
     type: int
     restore_value: no
     initial_value: "0"
@@ -135,10 +176,25 @@ globals:
     restore_value: no
     initial_value: "-1"
 
-  - id: my__increase_off_counter
+  - id: my__increase_off_rounds
     type: int
+    initial_value: "${default_timezone}"
+    restore_value: true
+
+  - id: my__tmzone
+    type: int[50]
     initial_value: "0"
     restore_value: true
+
+  - id: my__latest_latitude
+    type: int
+    initial_value: "${default_latitude}"
+    restore_value: false
+
+  - id: my__latest_longitude
+    type: int
+    initial_value: "${default_longitude}"
+    restore_value: false
 
 button:
   - platform: restart
@@ -146,32 +202,41 @@ button:
     icon: "mdi:icon7-off"
 
   - platform: template
-    name: "1F. ${title_reset_onoff_counter}"
+    name: "2D. ${title_reset_onoff_counter}"
     icon: "mdi:icon7-terminal"
     on_press:
       then:
-        lambda: |-
-          id(my__increase_off_counter) = 0;
-          id(again_on_counter).publish_state("0");
+        script.execute: reset_rounds
 
   - platform: template
     name: "9W. ${title_manual_open}"
     icon: "mdi:icon7-terminal"
     on_press:
       then:
-        - lambda: id(status_change)->execute(1);
+        - lambda: id(door_status_change)->execute(1);
 
   - platform: template
     name: "9V. ${title_manual_close}"
     icon: "mdi:icon7-terminal"
     on_press:
       then:
-        - lambda: id(status_change)->execute(0);
+        - lambda: id(door_status_change)->execute(0);
 
 number:
   - platform: template
+    id: brightness_below
+    name: "6B. ${title_brightness_below}"
+    icon: "mdi:icon7-sun"
+    min_value: 1
+    max_value: 1000
+    step: 1
+    initial_value: 200
+    optimistic: true
+    restore_value: true
+
+  - platform: template
     id: minseconds
-    name: "2B. ${title_turn_off_closed}"
+    name: "3B. ${title_turn_off_closed}"
     icon: "mdi:icon7-time"
     min_value: 10
     max_value: 1800
@@ -182,7 +247,7 @@ number:
 
   - platform: template
     id: maxseconds
-    name: "2A. ${title_turn_off_opened}"
+    name: "3A. ${title_turn_off_opened}"
     icon: "mdi:icon7-time"
     min_value: 30
     max_value: 3600
@@ -193,7 +258,7 @@ number:
 
   - platform: template
     id: between_onoff_check
-    name: "1D. ${title_turn_on_again}"
+    name: "2B. ${title_turn_on_again}"
     icon: "mdi:icon7-time"
     min_value: 5
     max_value: 60
@@ -204,7 +269,7 @@ number:
 
   - platform: template
     id: between_onoff_add
-    name: "3A. ${title_turn_on_again_add}"
+    name: "4A. ${title_turn_on_again_add}"
     icon: "mdi:icon7-time"
     min_value: 10
     max_value: 60
@@ -215,7 +280,7 @@ number:
 
   - platform: template
     id: between_onoff_maxadd
-    name: "3B. ${title_turn_on_again_maxadd}"
+    name: "4B. ${title_turn_on_again_maxadd}"
     min_value: 0.1
     max_value: 7
     step: 0.1
@@ -224,7 +289,7 @@ number:
     restore_value: true
 
   - platform: template
-    name: "4A. ${title_just_light_up_the_night}"
+    name: "5A. ${title_just_light_up_the_night}"
     id: nightonly
     icon: "mdi:icon7-time"
     min_value: 0
@@ -236,31 +301,35 @@ number:
 
   - platform: template
     id: latitude_val
-    name: "4B. ${title_latitude}"
+    name: "5B. ${title_latitude}"
     min_value: -90
     max_value: 90
-    step: 0.0001
-    initial_value: 21.9961
+    step: 0.01
+    initial_value: ${default_latitude}
     optimistic: true
     restore_value: true
     icon: "mdi:icon7-globe"
     on_value:
       then:
-        - script.execute: sun_position_change
+        - lambda: |-
+            id(sun_sun).set_latitude(x);
+        - script.execute: check_isnight
 
   - platform: template
     id: longitude_val
-    name: "4C. ${title_longitude}"
+    name: "5C. ${title_longitude}"
     icon: "mdi:icon7-globe"
     min_value: -90
     max_value: 90
-    step: 0.0001
-    initial_value: 47.4258
+    step: 0.01
+    initial_value: ${default_longitude}
     optimistic: true
     restore_value: true
     on_value:
       then:
-        - script.execute: sun_position_change
+        - lambda: |-
+            id(sun_sun).set_longitude(x);
+        - script.execute: check_isnight
 
 switch:
   - platform: gpio
@@ -282,9 +351,9 @@ switch:
         if (id(my__off_counter) >= 0){
           // increase the number of times it was turned on
           // shortly after being turned off
-          id(my__increase_off_counter) += 1;
+          id(my__increase_off_rounds) += 1;
 
-          id(again_on_counter).publish_state( std::to_string(id(my__increase_off_counter)).c_str());
+          id(again_on_counter).publish_state( std::to_string(id(my__increase_off_rounds)).c_str());
         }
 
         id(my__off_counter) = -1;
@@ -298,86 +367,147 @@ switch:
         id(my__off_counter) = 0;
 
 script:
-  - id: sun_position_change
-    then:
-      lambda: |-
-        return;
-
-  - id: status_change
-    parameters:
-      x: int
+  - id: get_timezone
     then:
       if:
         condition:
-          not:
-            and:
-              - lambda: "return x != 0;"
-              - lambda: |-
-                  if (id(nightonly).state <= 0){
-                    return false;
-                  }
-
-                  ESPTime nowtime = id(ha_time).now();
-
-                  if (!nowtime.is_valid()){
-                    nowtime = id(sntp_time).now();
-                  }
-
-                  if (!nowtime.is_valid()){
-                    return {"..."};
-                  }
-
-                  // get only current hour and minute
-                  char buffer[26];
-                  struct tm now = nowtime.to_c_tm();
-                  strftime(buffer, sizeof(buffer), "%d/%m/%Y, %H:%M", &now);
-
-                  puts(buffer);
-
-                  // convert only current hour and minute TO time value
-                  struct tm only_time;
-                  strptime(buffer, "%H:%M", &only_time);
-                  time_t newnow = mktime(&now);
-
-                  return (
-                    // a partir de minutos antes do por do sol
-                    ( newnow > ( id(sun_sun).sunset(627)->timestamp - (id(nightonly).state*60) ) ) ||
-                    // até minutos depois do nascer do sol
-                    ( newnow < ( id(sun_sun).sunrise(627)->timestamp + (id(nightonly).state*60) ) )
-                  );
-
-        then:
           lambda: |-
-            // is open
-            if (x){
-              id(my__counter) = id(maxseconds).state;
-              id(relay).turn_on();
+            return (
+              (id(my__latest_latitude) != id(latitude_val).state) &&
+              (id(my__latest_longitude) != id(longitude_val).state)
+            );
+        then:
+          - http_request.get:
+              url: !lambda |-
+                return
+                  "https://api.geotimezone.com/public/timezone?latitude=" +
+                  to_string(id(latitude_val).state) +
+                  "&longitude=" +
+                  to_string(id(longitude_val).state)
+                ;
 
-            // is cloused
-            }else{
-              int increase = abs(
-                id(between_onoff_add).state *
+              headers:
+                Content-Type: application/json
+              verify_ssl: false
+              on_response:
+                then:
+                  lambda: |-
+                    json::parse_json(id(http_request_data).get_string(), [](JsonObject root) {
+                        id(my_timezone).publish_state(root["iana_timezone"]);
+                    });
 
-                // increase seconds to OFF state
-                (id(my__increase_off_counter) > 1 ? id(my__increase_off_counter) - 1 : 0 )
-              );
+  - id: reset_rounds
+    then:
+      lambda: |-
+        id(my_between_maxreset_counter) = 43200;
+        id(my__increase_off_rounds) = 0;
+        id(again_on_counter).publish_state("0");
 
-              int max_addseconds  = abs( ((1.0+((float)id(between_onoff_maxadd).state))) * ((float)id(minseconds).state) );
+  - id: check_isnight
+    then:
+      lambda: |-
+        // option is disablet, dont check this
+        if (id(nightonly).state <= 0){
+          id(check_isnight_response) = 1;
+          return;
+        }
 
-              ESP_LOGI("main", "Contador incremental limitado a '%d' segundo(s).", max_addseconds);
+        ESPTime nowtime = id(ds1307_time).now();
 
-              id(my__counter) = id(minseconds).state + increase;
+        if (!nowtime.is_valid()){
+          nowtime = id(ha_time).now();
+        }
 
-              if (id(my__counter) > max_addseconds){
-                id(my__counter) = max_addseconds;
-              }
+        if (!nowtime.is_valid()){
+          nowtime = id(sntp_time).now();
+        }
 
-              if (id(my__counter) > id(maxseconds).state){
-                id(my__counter) = id(maxseconds).state;
-              }
+        if (!nowtime.is_valid()){
+          id(check_isnight_response) = 1;
+          return;
+        }
 
-              ESP_LOGI("main", "Iniciando timer em '%d' segundos.", id(my__counter));
-            }
+        // get only current hour and minute
+        char buffer[26];
+        struct tm now = nowtime.to_c_tm();
+        strftime(buffer, sizeof(buffer), "%d/%m/%Y, %H:%M", &now);
+
+        puts(buffer);
+
+        // convert only current hour and minute TO time value
+        struct tm only_time;
+        strptime(buffer, "%H:%M", &only_time);
+        time_t newnow = mktime(&now);
+
+        id(check_isnight_response) = (
+          // a partir de minutos antes do por do sol
+          ( newnow > ( id(sun_sun).sunset(627)->timestamp - (id(nightonly).state*60) ) ) ||
+          // até minutos depois do nascer do sol
+          ( newnow < ( id(sun_sun).sunrise(627)->timestamp + (id(nightonly).state*60) ) )
+        ) ? 1 : 0;
+
+  - id: door_status_change
+    parameters:
+      x: int
+    then:
+      lambda: |-
+        if (
+          // ngith onlye
+          // its enabled and is not ngight
+          (id(check_isnight_response) == 0) &&
+
+          // brightness (brilho)
+          (
+            // its enabled
+            (id(brightness_below).state > 0) &&
+            // It's initilialized and it's dark
+            (id(check_brightness_response) > id(brightness_below).state)
+          )
+        ){
+          return;
+        }
+
+        // is open
+        if (x){
+          id(my__counter) = id(maxseconds).state;
+          id(relay).turn_on();
+
+        // is cloused
+        }else{
+          int increase = abs(
+            id(between_onoff_add).state *
+
+            // increase seconds to OFF state
+            (id(my__increase_off_rounds) > 1 ? id(my__increase_off_rounds) - 1 : 0 )
+          );
+
+          int max_addseconds  = abs( ((1.0+((float)id(between_onoff_maxadd).state))) * ((float)id(minseconds).state) );
+
+          ESP_LOGI("main", "Contador incremental limitado a '%d' segundo(s).", max_addseconds);
+
+          id(my__counter) = id(minseconds).state + increase;
+
+          if (id(my__counter) > max_addseconds){
+            id(my__counter) = max_addseconds;
+          }
+
+          if (id(my__counter) > id(maxseconds).state){
+            id(my__counter) = id(maxseconds).state;
+          }
+
+          ESP_LOGI("main", "Iniciando timer em '%d' segundos.", id(my__counter));
+        }
+
+sensor:
+  - platform: bh1750
+    name: "6A. ${title_brightness_sensor}"
+    id: brightness_sensor
+    update_interval: 30s
+    state_class: "measurement"
+    device_class: illuminance
+    on_value:
+      lambda: |-
+        id(check_brightness_response) = x;
 
 binary_sensor:
   - platform: gpio
@@ -391,7 +521,7 @@ binary_sensor:
     filters:
       - delayed_on_off: 200ms
     on_state:
-      - lambda: id(status_change)->execute(x);
+      - lambda: id(door_status_change)->execute(x);
 
   - platform: gpio
     pin:
@@ -408,15 +538,22 @@ binary_sensor:
           id(relay).toggle();
         }
 
+http_request:
+  id: "http_request_data"
+  useragent: esphome/device
+  timeout: 10s
+
 text_sensor:
   - platform: sun
-    name: "4D. ${title_sunset_time}"
+    name: "5E. ${title_sunset_time}"
+    icon: "mdi:icon7-sun-fill"
     id: "sunset_time"
     type: sunset
     format: "%H:%M"
 
   - platform: sun
-    name: "4E. ${title_sunrise_time}"
+    name: "5F. ${title_sunrise_time}"
+    icon: "mdi:icon7-sun-fill"
     id: "sunrise_time"
     type: sunrise
     format: "%H:%M"
@@ -424,20 +561,28 @@ text_sensor:
   - platform: template
     id: remainingtime
     icon: "mdi:icon7-clock-fill"
-    name: "1C. ${title_off_in}"
+    name: "2A. ${title_off_in}"
   #    update_interval: 1s
 
   - platform: template
     id: again_on_counter
-    name: "1E. ${title_again_on_counter}"
+    name: "2C. ${title_again_on_counter}"
     icon: "mdi:icon7-calculator"
   #    update_interval: 60s
 
   - platform: template
-    name: "9X. Date and Time"
+    name: "5D. Timezone"
+    id: my_timezone
+
+  - platform: template
+    name: "9X. Current time"
     id: show_time
     lambda: |-
-      ESPTime nowtime = id(ha_time).now();
+      ESPTime nowtime = id(ds1307_time).now();
+
+      if (!nowtime.is_valid()){
+        nowtime = id(ha_time).now();
+      }
 
       if (!nowtime.is_valid()){
         nowtime = id(sntp_time).now();
