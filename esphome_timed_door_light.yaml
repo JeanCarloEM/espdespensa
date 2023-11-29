@@ -178,12 +178,11 @@ globals:
 
   - id: my__increase_off_rounds
     type: int
-    initial_value: "${default_timezone}"
+    initial_value: "0"
     restore_value: true
 
   - id: my__tmzone
     type: int[50]
-    initial_value: "0"
     restore_value: true
 
   - id: my__latest_latitude
@@ -305,7 +304,7 @@ number:
     min_value: -90
     max_value: 90
     step: 0.01
-    initial_value: ${default_latitude}
+    initial_value: "${default_latitude}"
     optimistic: true
     restore_value: true
     icon: "mdi:icon7-globe"
@@ -322,7 +321,7 @@ number:
     min_value: -90
     max_value: 90
     step: 0.01
-    initial_value: ${default_longitude}
+    initial_value: "${default_longitude}"
     optimistic: true
     restore_value: true
     on_value:
@@ -367,6 +366,42 @@ switch:
         id(my__off_counter) = 0;
 
 script:
+  - id: show_timezone
+    then:
+      lambda: |-
+        std::string nzone = "";
+
+        for (int pos = 0; pos < 50; pos++){
+          if (id(my__tmzone)[pos] == 13){
+            break;
+          }
+
+          nzone += std::to_string(id(my__tmzone)[pos]);
+        }
+
+        id(my_timezone).publish_state(nzone.c_str());
+
+  - id: set_timezone
+    parameters:
+      x: string
+    then:
+      lambda: |-
+        int len = x.length() > 49 ? 49 : x.length();
+
+        int pos;
+
+        for (pos = 0; pos < len; pos++){
+          id(my__tmzone)[pos] = (int)x.at(pos);
+        }
+
+        id(my__tmzone)[pos] = 13;
+
+        id(ds1307_time).set_timezone(x);
+        id(ha_time).set_timezone(x);
+        id(sntp_time).set_timezone(x);
+
+        id(show_timezone)->execute();
+
   - id: get_timezone
     then:
       if:
@@ -393,7 +428,9 @@ script:
                 then:
                   lambda: |-
                     json::parse_json(id(http_request_data).get_string(), [](JsonObject root) {
-                        id(my_timezone).publish_state(root["iana_timezone"]);
+                      id(my__latest_latitude) = id(latitude_val).state;
+                      id(my__latest_longitude) = id(longitude_val).state;
+                      id(set_timezone)->execute(root["iana_timezone"]);
                     });
 
   - id: reset_rounds
