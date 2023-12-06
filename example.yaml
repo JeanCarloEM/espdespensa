@@ -4,11 +4,12 @@ substitutions:
   capitalized_name: "Despensa"
   devicecomment: "Luz automática da Despensa"
   board: esp12e
+  pin_rele: "GPIO5"
   i2c_sda_pin: "GPIO14"
   i2c_scl_pin: "GPIO12"
-  pin_rele: "GPIO5"
   pin_button: "GPIO4"
-  pin_sensor: "GPIO16"
+  pin_sensor: "GPIO13"
+  pin_programmer: "GPIO0"
   apikey: !secret timed_door_light__apikey
   otakey: !secret timed_door_light__otakey
   wifi: "gz"
@@ -16,6 +17,6 @@ substitutions:
   default_latitude: "-22.01"
   default_longitude: "-47.42"
   default_timezone: "America/Sao_Paulo"
-  brightness_pin: GPIO17
+
 
 <<: !include esphome_timed_door_light.yaml

@@ -26,6 +26,8 @@ i2c:
 
 # Enable logging
 logger:
+  level: WARN
+  tx_buffer_size: 64
 
 # Enable Home Assistant API
 api:
@@ -98,12 +100,20 @@ interval:
   - interval: 1s
     then:
       lambda: |-
-        // forces a reboot counter in a maximum of 12 hours.
+        /*
+         * forces a reboot counter in a maximum of 12 hours.
+         */
         id(my_between_maxreset_counter) -= 1;
 
         if (id(my_between_maxreset_counter) <= 0){
           id(reset_rounds)->execute();
         }
+
+        /*
+         * factory_reset pressed counter
+         */
+         id(my__programmer_counter) = id(my__programmer_counter) + (id(my__programmer_counter) >= 0 ? 1 : 0);
+         id(my__programmer_counter) = (id(my__programmer_counter) > 20) ? -1 : id(my__programmer_counter);
 
         /*
          * counter of timer between off and on
@@ -156,6 +166,11 @@ globals:
     restore_value: no
     initial_value: "43200"
 
+  - id: my__programmer_counter
+    type: int
+    restore_value: no
+    initial_value: "-1"
+
   - id: my__counter
     type: int
     restore_value: no
@@ -196,8 +211,17 @@ globals:
     restore_value: false
 
 button:
+  - platform: safe_mode
+    id: restart_safety
+    name: "9T. ${title_safe_mode}"
+
+  - platform: factory_reset
+    id: resetcfg
+    internal: true
+    name: "${title_factory_reset}"
+
   - platform: restart
-    name: "9W. ${title_restart}"
+    name: "9U. ${title_restart}"
     icon: "mdi:icon7-off"
 
   - platform: template
@@ -415,9 +439,9 @@ script:
           - http_request.get:
               url: !lambda |-
                 return
-                  "https://api.geotimezone.com/public/timezone?latitude=" +
+                  "https://timezone.bertold.org/timezone?c=1&s=1&lat=" +
                   to_string(id(latitude_val).state) +
-                  "&longitude=" +
+                  "&lon=" +
                   to_string(id(longitude_val).state)
                 ;
 
@@ -430,7 +454,7 @@ script:
                     json::parse_json(id(http_request_data).get_string(), [](JsonObject root) {
                       id(my__latest_latitude) = id(latitude_val).state;
                       id(my__latest_longitude) = id(longitude_val).state;
-                      id(set_timezone)->execute(root["iana_timezone"]);
+                      id(set_timezone)->execute(root["Result"]);
                     });
 
   - id: reset_rounds
@@ -549,10 +573,32 @@ sensor:
 binary_sensor:
   - platform: gpio
     pin:
+      number: ${pin_programmer}
+      mode:
+        input: true
+        pullup: true
+    id: programmer
+    internal: true
+    filters:
+      - delayed_on_off: 50ms
+    on_state:
+      - lambda: |-
+          if (x){
+            my__programmer_counter = 0;
+          }else{
+            my__programmer_counter = -1;
+
+            if (my__programmer_counter >= 8){
+              id(resetcfg).press();
+            }
+          }
+
+  - platform: gpio
+    pin:
       number: ${pin_sensor}
       mode:
         input: true
-        pulldown: true
+        pullup: true
     name: "1A. ${title_dooropened}"
     id: door
     filters:
@@ -568,7 +614,7 @@ binary_sensor:
         pullup: true
     name: "Push Buttom"
     filters:
-      - delayed_on_off: 200ms
+      - delayed_on_off: 50ms
     on_state:
       lambda: |-
         if (!x){
